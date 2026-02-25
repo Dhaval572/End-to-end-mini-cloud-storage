@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <memory>
 #include <locale>
 #include <clocale>
@@ -5,8 +6,8 @@
 #include <string>
 #include <vector>
 #include <fstream>
-#include <thread>
 #include <chrono>
+#include <thread>
 #include <httplib.h>
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/component/component.hpp"
@@ -20,16 +21,18 @@ private:
     std::string server_url;
     std::vector<std::string> file_list;
     std::string status_message;
-    bool should_exit = false;
-    bool network_error = false;
+    bool network_error;
+    bool server_connected;
+    std::chrono::steady_clock::time_point last_heartbeat;
 
 public:
     Client(const std::string& server_address = "localhost", int port = 8080)
         : http_client(nullptr)
         , server_url(server_address)
         , status_message("Ready")
+        , network_error(false)
+        , server_connected(false)
     {
-        // Check if it's already a full URL (for ngrok)
         if (server_address.find("http://") == 0 || server_address.find("https://") == 0)
         {
             server_url = server_address;
@@ -42,21 +45,11 @@ public:
         std::cout << "Connecting to server: " << server_url << std::endl;
         
         http_client = std::make_unique<httplib::Client>(server_url.c_str());
-        http_client->set_connection_timeout(3);
-        http_client->set_read_timeout(5);
-        http_client->set_write_timeout(5);
+        http_client->set_connection_timeout(2);
+        http_client->set_read_timeout(3);
+        http_client->set_write_timeout(3);
         
-        // Test connection
-        auto res = http_client->Get("/");
-        if (res)
-        {
-            std::cout << "Server connected successfully" << std::endl;
-        }
-        else
-        {
-            std::cout << "Warning: Cannot connect to server. Make sure it's running." << std::endl;
-            network_error = true;
-        }
+        CheckConnection();
     }
 
     ~Client()
@@ -64,11 +57,52 @@ public:
         std::cout << "Client shutting down..." << std::endl;
     }
 
+    void CheckConnection()
+    {
+        auto res = http_client->Get("/");
+        if (res && res->status == 200)
+        {
+            server_connected = true;
+            network_error = false;
+            last_heartbeat = std::chrono::steady_clock::now();
+        }
+        else
+        {
+            server_connected = false;
+            network_error = true;
+        }
+    }
+
+    bool IsServerConnected()
+    {
+        // Check if it's been more than 5 seconds since last heartbeat
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_heartbeat).count();
+        
+        if (elapsed > 5)
+        {
+            // Try a quick connection test
+            auto res = http_client->Get("/");
+            if (res && res->status == 200)
+            {
+                server_connected = true;
+                last_heartbeat = now;
+            }
+            else
+            {
+                server_connected = false;
+                network_error = true;
+            }
+        }
+        
+        return server_connected;
+    }
+
     bool Login(const std::string& username, const std::string& password)
     {
-        if (network_error)
+        if (!IsServerConnected())
         {
-            status_message = "Cannot connect to server";
+            status_message = "Server disconnected";
             return false;
         }
         
@@ -84,6 +118,7 @@ public:
             {
                 current_user = username;
                 status_message = "Login successful";
+                last_heartbeat = std::chrono::steady_clock::now();
                 return true;
             }
             else
@@ -95,15 +130,16 @@ public:
         {
             status_message = "Server not responding";
             network_error = true;
+            server_connected = false;
         }
         return false;
     }
 
     bool Register(const std::string& username, const std::string& password)
     {
-        if (network_error)
+        if (!IsServerConnected())
         {
-            status_message = "Cannot connect to server";
+            status_message = "Server disconnected";
             return false;
         }
         
@@ -118,6 +154,7 @@ public:
             if (response->status == 200)
             {
                 status_message = "Registration successful";
+                last_heartbeat = std::chrono::steady_clock::now();
                 return true;
             }
             else
@@ -129,15 +166,16 @@ public:
         {
             status_message = "Server not responding";
             network_error = true;
+            server_connected = false;
         }
         return false;
     }
 
     bool UploadFile(const std::string& filepath)
     {
-        if (network_error)
+        if (!IsServerConnected())
         {
-            status_message = "Cannot connect to server";
+            status_message = "Server disconnected";
             return false;
         }
         
@@ -173,6 +211,7 @@ public:
             if (response->status == 200)
             {
                 status_message = "Upload successful: " + filename;
+                last_heartbeat = std::chrono::steady_clock::now();
                 return true;
             }
             else
@@ -184,15 +223,16 @@ public:
         {
             status_message = "Server not responding";
             network_error = true;
+            server_connected = false;
         }
         return false;
     }
 
     bool DownloadFile(const std::string& filename)
     {
-        if (network_error)
+        if (!IsServerConnected())
         {
-            status_message = "Cannot connect to server";
+            status_message = "Server disconnected";
             return false;
         }
         
@@ -214,6 +254,7 @@ public:
                 file.close();
                 
                 status_message = "Downloaded: " + filename;
+                last_heartbeat = std::chrono::steady_clock::now();
                 return true;
             }
             else
@@ -225,6 +266,7 @@ public:
         {
             status_message = "Server not responding";
             network_error = true;
+            server_connected = false;
         }
         return false;
     }
@@ -239,10 +281,7 @@ public:
         bool login_success = false;
         std::string login_status = "";
         
-        if (network_error)
-        {
-            login_status = "Warning: Cannot connect to server";
-        }
+        CheckConnection();
         
         auto username_input = Input(&username, "Username");
         auto password_input = Input(&password, "Password");
@@ -259,70 +298,60 @@ public:
         
         auto login_button = Button("Login", [&]
         {
-            login_status = "Connecting...";
-            screen.PostEvent(Event::Custom);
-            
-            // Run login in background to prevent freezing
-            std::thread([&]()
+            if (!IsServerConnected())
             {
-                if (Login(username, password))
-                {
-                    login_success = true;
-                    screen.ExitLoopClosure()();
-                }
-                else
-                {
-                    screen.PostEvent(Event::Custom);
-                }
-            }).detach();
+                login_status = "Server disconnected";
+                return;
+            }
+            
+            if (Login(username, password))
+            {
+                login_success = true;
+                screen.ExitLoopClosure()();
+            }
+            else
+            {
+                login_status = status_message;
+            }
         });
         
         auto register_button = Button("Register", [&]
         {
-            login_status = "Connecting...";
-            screen.PostEvent(Event::Custom);
-            
-            std::thread([&]()
+            if (!IsServerConnected())
             {
-                if (Register(username, password))
-                {
-                    login_status = "Registration successful! Please login.";
-                }
-                else
-                {
-                    login_status = status_message;
-                }
-                screen.PostEvent(Event::Custom);
-            }).detach();
+                login_status = "Server disconnected";
+                return;
+            }
+            
+            if (Register(username, password))
+            {
+                login_status = "Registration successful! Please login.";
+            }
+            else
+            {
+                login_status = status_message;
+            }
         });
         
         auto quit_button = Button("Quit", [&] { screen.ExitLoopClosure()(); });
         
         auto reconnect_button = Button("Reconnect", [&]
         {
-            login_status = "Reconnecting...";
-            screen.PostEvent(Event::Custom);
+            http_client = std::make_unique<httplib::Client>(server_url.c_str());
+            http_client->set_connection_timeout(2);
+            http_client->set_read_timeout(3);
+            http_client->set_write_timeout(3);
             
-            std::thread([&]()
+            CheckConnection();
+            
+            if (server_connected)
             {
-                http_client = std::make_unique<httplib::Client>(server_url.c_str());
-                http_client->set_connection_timeout(3);
-                http_client->set_read_timeout(5);
-                http_client->set_write_timeout(5);
-                
-                auto res = http_client->Get("/");
-                if (res)
-                {
-                    network_error = false;
-                    login_status = "Connected to server";
-                }
-                else
-                {
-                    network_error = true;
-                    login_status = "Still cannot connect";
-                }
-                screen.PostEvent(Event::Custom);
-            }).detach();
+                login_status = "Connected to server";
+            }
+            else
+            {
+                login_status = "Cannot connect to server";
+            }
         });
         
         auto login_components = Container::Vertical(
@@ -335,10 +364,13 @@ public:
         
         auto login_renderer = Renderer(login_components, [&]
         {
+            std::string conn_status = server_connected ? "Connected" : "Disconnected";
+            Color conn_color = server_connected ? Color::Green : Color::Red;
+            
             return vbox({
                 text("E2Eye Login") | bold | center,
                 separator(),
-                text("Server: " + server_url) | color(network_error ? Color::Red : Color::Green) | dim,
+                hbox(text("Server: "), text(server_url) | dim, text(" [") , text(conn_status) | color(conn_color) | bold, text("]")),
                 separator(),
                 text("Username:"),
                 username_input->Render(),
@@ -366,28 +398,58 @@ public:
     void ShowMainMenu(ftxui::ScreenInteractive& screen)
     {
         using namespace ftxui;
-
+    
         int selected_tab = 0;
         int previous_tab = 0;
+        size_t selected_file = 0;
         std::vector<std::string> tab_titles = {"Files", "Upload", "Storage"};
-
+    
         auto tab_menu = Menu(&tab_titles, &selected_tab);
-
-        // Files tab
+    
+        // Create a component for file list with event handling
+        auto file_list_container = Container::Vertical({});
+        
+        // Files tab content as a component
         auto files_tab = Renderer([&]
         {
+            if (!IsServerConnected())
+            {
+                return vbox({
+                    text("Connection Lost") | bold | center | color(Color::Red),
+                    separator(),
+                    text("Server is not responding") | center,
+                    text("") | size(HEIGHT, EQUAL, 1),
+                    text("Press Logout to return to login screen") | dim | center,
+                    hbox({
+                        Button("Logout", [&]
+                        {
+                            current_user = "";
+                            screen.ExitLoopClosure()();
+                        })->Render()
+                    }) | center
+                }) | border | size(HEIGHT, EQUAL, 10);
+            }
+            
             if (selected_tab == 0)
             {
                 RefreshFileList();
             }
             
-            static int selected = 0;
             static std::string download_status = "";
             
             Elements file_elements;
+            size_t index = 0;
             for (const auto& file : file_list)
             {
-                file_elements.push_back(text("  " + file));
+                if (index == selected_file)
+                {
+                    file_elements.push_back(text("→ " + file) | bold | color(Color::Blue));
+                }
+                else
+                {
+                    file_elements.push_back(text("  " + file));
+                }
+                index++;
             }
             if (file_elements.empty())
             {
@@ -402,41 +464,46 @@ public:
                 hbox({
                     Button("Download Selected", [&]
                     {
-                        download_status = "Downloading...";
-                        screen.PostEvent(Event::Custom);
-                        
-                        std::thread([&]()
+                        if (!IsServerConnected())
                         {
-                            if (!file_list.empty() && selected < file_list.size())
+                            download_status = "Server disconnected";
+                            return;
+                        }
+                        
+                        if (!file_list.empty() && selected_file < file_list.size())
+                        {
+                            std::string filename = file_list[selected_file];
+                            size_t space = filename.find(' ');
+                            if (space != std::string::npos)
                             {
-                                std::string filename = file_list[selected];
-                                size_t space = filename.find(' ');
-                                if (space != std::string::npos)
-                                {
-                                    filename = filename.substr(0, space);
-                                }
-                                
-                                if (DownloadFile(filename))
-                                {
-                                    download_status = "Downloaded: " + filename;
-                                }
-                                else
-                                {
-                                    download_status = "Download failed";
-                                }
+                                filename = filename.substr(0, space);
+                            }
+                            
+                            if (DownloadFile(filename))
+                            {
+                                download_status = "Downloaded: " + filename;
                             }
                             else
                             {
-                                download_status = "No file selected";
+                                download_status = "Download failed";
                             }
-                            screen.PostEvent(Event::Custom);
-                        }).detach();
+                        }
+                        else
+                        {
+                            download_status = "No file selected";
+                        }
                     })->Render(),
                     Button("Refresh", [&]
                     {
-                        RefreshFileList();
-                        download_status = "List refreshed";
-                        screen.PostEvent(Event::Custom);
+                        if (IsServerConnected())
+                        {
+                            RefreshFileList();
+                            download_status = "List refreshed";
+                        }
+                        else
+                        {
+                            download_status = "Server disconnected";
+                        }
                     })->Render(),
                     Button("Logout", [&]
                     {
@@ -450,10 +517,27 @@ public:
                 text(status_message) | color(Color::Blue)
             }) | border;
         });
-
+    
         // Upload tab
         auto upload_tab = Renderer([&]
         {
+            if (!IsServerConnected())
+            {
+                return vbox({
+                    text("Connection Lost") | bold | center | color(Color::Red),
+                    separator(),
+                    text("Server is not responding") | center,
+                    text("") | size(HEIGHT, EQUAL, 1),
+                    text("Press Back to return to Files tab") | dim | center,
+                    hbox({
+                        Button("Back", [&]
+                        {
+                            selected_tab = 0;
+                        })->Render()
+                    }) | center
+                }) | border | size(HEIGHT, EQUAL, 10);
+            }
+            
             static std::string filepath = "";
             static std::string upload_status = "";
             
@@ -466,31 +550,30 @@ public:
                 text("File path:"),
                 Input(&filepath, "Enter file path")->Render(),
                 hbox({
-                    Button("Upload File", [&]
+                    Button("Upload", [&]
                     {
+                        if (!IsServerConnected())
+                        {
+                            upload_status = "Server disconnected";
+                            return;
+                        }
+                        
                         if (filepath.empty())
                         {
                             upload_status = "Please enter a file path";
                         }
                         else
                         {
-                            upload_status = "Uploading...";
-                            screen.PostEvent(Event::Custom);
-                            
-                            std::thread([&]()
+                            if (UploadFile(filepath))
                             {
-                                if (UploadFile(filepath))
-                                {
-                                    upload_status = "Upload successful!";
-                                    filepath = "";
-                                    RefreshFileList();
-                                }
-                                else
-                                {
-                                    upload_status = "Upload failed";
-                                }
-                                screen.PostEvent(Event::Custom);
-                            }).detach();
+                                upload_status = "Upload successful!";
+                                filepath = "";
+                                RefreshFileList();
+                            }
+                            else
+                            {
+                                upload_status = "Upload failed";
+                            }
                         }
                     })->Render(),
                     Button("Back", [&]
@@ -513,10 +596,27 @@ public:
                 text("  C:\\Users\\name\\file.pdf") | dim
             }) | border;
         });
-
+    
         // Storage tab
         auto storage_tab = Renderer([&]
         {
+            if (!IsServerConnected())
+            {
+                return vbox({
+                    text("Connection Lost") | bold | center | color(Color::Red),
+                    separator(),
+                    text("Server is not responding") | center,
+                    text("") | size(HEIGHT, EQUAL, 1),
+                    text("Press Back to return to Files tab") | dim | center,
+                    hbox({
+                        Button("Back", [&]
+                        {
+                            selected_tab = 0;
+                        })->Render()
+                    }) | center
+                }) | border | size(HEIGHT, EQUAL, 10);
+            }
+            
             std::string storage_info = GetStorageInfo();
             return vbox({
                 text("Storage Information") | bold | center,
@@ -526,7 +626,7 @@ public:
                 hbox({
                     Button("Refresh", [&]
                     {
-                        screen.PostEvent(Event::Custom);
+                        // Just refresh
                     })->Render(),
                     Button("Logout", [&]
                     {
@@ -536,7 +636,7 @@ public:
                 })
             }) | border;
         });
-
+    
         auto tab_container = Container::Tab(
             {
                 files_tab,
@@ -545,35 +645,61 @@ public:
             },
             &selected_tab
         );
-
+    
         auto main_layout = Container::Vertical({
             tab_menu,
             tab_container
         });
-
+    
         auto main_renderer = Renderer(main_layout, [&]
         {
+            std::string conn_status = server_connected ? "● Connected" : "○ Disconnected";
+            Color conn_color = server_connected ? Color::Green : Color::Red;
+            
             if (selected_tab == 0 && previous_tab != selected_tab)
             {
                 RefreshFileList();
             }
             previous_tab = selected_tab;
-
+    
             return vbox({
-                text("E2Eye - User: " + current_user) | bold | center,
+                hbox(
+                    text("E2Eye - User: " + current_user) | bold,
+                    filler(),
+                    text(conn_status) | color(conn_color) | dim
+                ) | center,
                 separator(),
                 tab_menu->Render() | hcenter,
                 separator(),
                 tab_container->Render() | flex,
             }) | border;
         });
-
-        screen.Loop(main_renderer);
-    }
+    
+        // Add global key handling for file navigation
+        auto main_component = main_layout | CatchEvent([&](Event event)
+        {
+            if (selected_tab == 0) // Only in Files tab
+            {
+                if (event == Event::ArrowUp && selected_file > 0)
+                {
+                    selected_file--;
+                    return true;
+                }
+                if (event == Event::ArrowDown && selected_file < file_list.size() - 1)
+                {
+                    selected_file++;
+                    return true;
+                }
+            }
+            return false;
+        });
+    
+        screen.Loop(main_component);
+}
 
     void RefreshFileList()
     {
-        if (network_error) return;
+        if (!IsServerConnected()) return;
         
         std::string url = "/files?username=" + current_user;
         auto response = http_client->Get(url.c_str());
@@ -593,28 +719,30 @@ public:
                 content.erase(0, pos + 1);
             }
             status_message = "Found " + std::to_string(file_list.size()) + " files";
-            network_error = false;
+            last_heartbeat = std::chrono::steady_clock::now();
         }
         else
         {
             status_message = "Failed to load files";
+            server_connected = false;
             network_error = true;
         }
     }
 
     std::string GetStorageInfo()
     {
-        if (network_error) return "Cannot connect to server";
+        if (!IsServerConnected()) return "Cannot connect to server";
         
         std::string url = "/storage?username=" + current_user;
         auto response = http_client->Get(url.c_str());
         
         if (response && response->status == 200)
         {
-            network_error = false;
+            last_heartbeat = std::chrono::steady_clock::now();
             return response->body;
         }
         
+        server_connected = false;
         network_error = true;
         return "Unable to retrieve storage info";
     }

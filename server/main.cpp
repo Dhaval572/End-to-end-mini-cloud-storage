@@ -3,10 +3,10 @@
 #include <filesystem>
 #include <string>
 #include <vector>
-#include <httplib.h>
 #include "common/user_manager.h"
 #include "common/encryption.h"
-
+#define CPPHTTPLIB_OPENSSL_SUPPORT
+#include <httplib.h>
 namespace fs = std::filesystem;
 
 class Server
@@ -159,7 +159,8 @@ private:
             std::ofstream ofs(file_path, std::ios::binary);
             if (ofs.is_open()) 
             {
-                std::vector<unsigned char> encrypted_data = m_encryption.Encrypt(
+                std::vector<unsigned char> encrypted_data = m_encryption.Encrypt
+                (
                     std::vector<unsigned char>(file_content.begin(), file_content.end()), 
                     username
                 );
@@ -244,14 +245,16 @@ private:
             }
 
             std::ifstream ifs(file_path, std::ios::binary);
-            std::vector<unsigned char> encrypted_data(
+            std::vector<unsigned char> encrypted_data
+            (
                 (std::istreambuf_iterator<char>(ifs)),
                 std::istreambuf_iterator<char>()
             );
             
             std::vector<unsigned char> decrypted_data = m_encryption.Decrypt(encrypted_data, username);
             
-            res.set_content(
+            res.set_content
+            (
                 reinterpret_cast<const char*>(decrypted_data.data()), 
                 decrypted_data.size(), 
                 "application/octet-stream"

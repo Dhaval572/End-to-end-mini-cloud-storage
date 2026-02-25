@@ -9,12 +9,14 @@ public:
     Encryption();
     ~Encryption();
 
-    std::vector<unsigned char> Encrypt(
+    std::vector<unsigned char> Encrypt
+    (
         const std::vector<unsigned char>& data,
         const std::string& key_context
     );
 
-    std::vector<unsigned char> Decrypt(
+    std::vector<unsigned char> Decrypt
+    (
         const std::vector<unsigned char>& encrypted_data,
         const std::string& key_context
     );

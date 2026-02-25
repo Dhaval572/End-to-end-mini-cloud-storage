@@ -58,12 +58,17 @@ bool UserManager::RegisterUser(const std::string& username, const std::string& p
     }
 
     char hash[crypto_pwhash_STRBYTES];
-    if (crypto_pwhash_str(
+    if 
+    (
+        crypto_pwhash_str
+        (
             hash,
             password.c_str(),
             password.length(),
             crypto_pwhash_OPSLIMIT_MODERATE,
-            crypto_pwhash_MEMLIMIT_MODERATE) != 0)
+            crypto_pwhash_MEMLIMIT_MODERATE
+        ) != 0
+    )
     {
         return false;
     }
@@ -81,7 +86,8 @@ bool UserManager::AuthenticateUser(const std::string& username, const std::strin
         return false;
     }
 
-    return crypto_pwhash_str_verify(
+    return crypto_pwhash_str_verify
+    (
         it->second.password_hash.c_str(),
         password.c_str(),
         password.length()
@@ -90,7 +96,7 @@ bool UserManager::AuthenticateUser(const std::string& username, const std::strin
 
 bool UserManager::UserExists(const std::string& username)
 {
-    return m_users.find(username) != m_users.end();
+    return m_users.contains(username);
 }
 
 size_t UserManager::GetStorageUsed(const std::string& username)

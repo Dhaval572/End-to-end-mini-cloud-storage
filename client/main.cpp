@@ -42,37 +42,48 @@ public:
         auto password_input = Input(&password, "Password");
         
         // Make password field
-        password_input |= CatchEvent([&](Event event) {
+        password_input |= CatchEvent([&](Event event) 
+        {
             return false;  // Let FTXUI handle normally
         });
         
         // Login button
-        auto login_button = Button("Login", [&] {
-            if (Login(username, password)) {
+        auto login_button = Button("Login", [&] 
+        {
+            if (Login(username, password)) 
+            {
                 login_success = true;
                 screen.ExitLoopClosure()();
-            } else {
+            } 
+            else
+            {
                 login_status = "Login failed";
             }
         });
         
         // Register button
-        auto register_button = Button("Register", [&] {
-            if (Register(username, password)) {
+        auto register_button = Button("Register", [&] 
+        {
+            if (Register(username, password)) 
+            {
                 login_status = "Registration successful! Please login.";
-            } else {
+            } 
+            else 
+            {
                 login_status = "Registration failed";
             }
         });
         
         // Login screen layout
-        auto login_components = Container::Vertical({
+        auto login_components = Container::Vertical(
+        {
             username_input,
             password_input,
             Container::Horizontal({login_button, register_button})
         });
         
-        auto login_renderer = Renderer(login_components, [&] {
+        auto login_renderer = Renderer(login_components, [&] 
+        {
             return vbox({
                 text("E2Eye Login") | bold | center,
                 separator(),
@@ -88,7 +99,8 @@ public:
         
         screen.Loop(login_renderer);
         
-        if (login_success) {
+        if (login_success) 
+        {
             ShowMainMenu(screen);
         }
     }
@@ -102,7 +114,8 @@ private:
         
         auto response = http_client.Post("/login", params);
         
-        if (response && response->status == 200) {
+        if (response && response->status == 200) 
+        {
             current_user = username;
             return true;
         }
@@ -131,14 +144,16 @@ private:
         auto tab_menu = Menu(&tab_titles, &selected_tab);
         
         // Files tab content
-        auto files_tab = Renderer([&] {
+        auto files_tab = Renderer([&] 
+        {
             RefreshFileList();
             Elements file_elements;
             for (const auto& file : file_list) 
             {
                 file_elements.push_back(text("  " + file));
             }
-            if (file_elements.empty()) {
+            if (file_elements.empty()) 
+            {
                 file_elements.push_back(text("  No files found"));
             }
             return vbox({
@@ -151,7 +166,8 @@ private:
         });
         
         // Upload tab content
-        auto upload_tab = Renderer([&] {
+        auto upload_tab = Renderer([&] 
+        {
             return vbox({
                 text("Upload File:") | bold,
                 separator(),
@@ -167,7 +183,8 @@ private:
         });
         
         // Storage tab content
-        auto storage_tab = Renderer([&] {
+        auto storage_tab = Renderer([&] 
+        {
             std::string storage_info = GetStorageInfo();
             return vbox({
                 text("Storage Information:") | bold,
@@ -179,7 +196,8 @@ private:
         });
         
         // Container for tabs
-        auto tab_container = Container::Tab(
+        auto tab_container = Container::Tab
+        (
             {
                 files_tab,
                 upload_tab,
@@ -189,12 +207,14 @@ private:
         );
         
         // Main layout
-        auto main_layout = Container::Vertical({
+        auto main_layout = Container::Vertical
+        ({
             tab_menu,
             tab_container
         });
         
-        auto main_renderer = Renderer(main_layout, [&] {
+        auto main_renderer = Renderer(main_layout, [&] 
+        {
             return vbox({
                 text("E2Eye - User: " + current_user) | bold | center,
                 separator(),

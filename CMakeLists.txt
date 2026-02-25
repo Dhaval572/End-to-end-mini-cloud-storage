@@ -51,6 +51,7 @@ target_link_libraries(server
     Threads::Threads
     OpenSSL::SSL      # FIX: Use OpenSSL::SSL instead of ssl
     OpenSSL::Crypto   # FIX: Use OpenSSL::Crypto instead of crypto
+    httplib::httplib
 )
 
 # Client executable
@@ -68,4 +69,5 @@ target_link_libraries(client
     Threads::Threads
     OpenSSL::SSL      # FIX: Use OpenSSL::SSL instead of ssl
     OpenSSL::Crypto   # FIX: Use OpenSSL::Crypto instead of crypto
+    httplib::httplib
 )

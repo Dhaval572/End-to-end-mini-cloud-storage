@@ -4,9 +4,7 @@ project(E2Eye)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# -------------------------------------------------------------------
 # SPEED: Persistent download cache
-# -------------------------------------------------------------------
 if(NOT FETCHCONTENT_BASE_DIR)
     set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/e2eye/fetchcontent" CACHE PATH "Directory to keep downloaded dependencies")
 endif()
@@ -56,20 +54,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${httplib_SOURCE_DIR})  
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/common)
 
-# -------------------------------------------------------------------
-# PCH temporarily disabled due to spaces in path
-# -------------------------------------------------------------------
-# set(COMMON_PCH
-#     <httplib.h>
-#     <sodium.h>
-#     <string>
-#     <vector>
-#     <map>
-#     <fstream>
-#     <iostream>
-#     <filesystem>
-# )
-
 # Server executable
 add_executable(server 
     server/main.cpp
@@ -85,13 +69,9 @@ target_link_libraries(server
     httplib::httplib
 )
 
-# target_precompile_headers(server PRIVATE ${COMMON_PCH})
-
 # Client executable
 add_executable(client
     client/main.cpp
-    common/user_manager.cpp
-    common/encryption.cpp
 )
 
 target_link_libraries(client
@@ -104,12 +84,6 @@ target_link_libraries(client
     OpenSSL::Crypto
     httplib::httplib
 )
-
-# target_precompile_headers(client PRIVATE
-#     ${COMMON_PCH}
-#     "ftxui/dom/elements.hpp"
-#     "ftxui/component/component.hpp"
-# )
 
 # Enable ccache
 find_program(CCACHE_PROGRAM ccache)

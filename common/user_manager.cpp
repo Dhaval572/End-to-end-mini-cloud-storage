@@ -6,7 +6,7 @@
 
 UserManager::UserManager() : m_storage_limit(100 * 1024 * 1024), m_data_file("users.txt")
 {
-    (void)sodium_init();
+    if(sodium_init() < 0) std::cerr << "Failed to initialize libsodium" << std::endl;
     LoadUsers();
 }
 

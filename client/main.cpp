@@ -1,18 +1,17 @@
+#include <memory>
+#include <locale>
+#include <clocale>
 #include "ftxui/dom/elements.hpp"
-#include "ftxui/screen/screen.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/screen_interactive.hpp"
-#include "ftxui/component/component_options.hpp"
-#include <iostream>
 #include <string>
 #include <vector>
-#include <fstream>
 #include <httplib.h>
 
 class Client
 {
 private:
-    httplib::Client http_client;
+    std::unique_ptr<httplib::Client> http_client;
     std::string current_user;
     std::string server_url;
     std::vector<std::string> file_list;
@@ -20,10 +19,68 @@ private:
 
 public:
     Client(const std::string& server_address = "localhost", int port = 8080)
-        : server_url("http://" + server_address + ":" + std::to_string(port))
-        , http_client(server_url)
+        : http_client(nullptr)
+        , server_url("http://" + server_address + ":" + std::to_string(port))
         , status_message("Ready")
     {
+        std::cout << "DEBUG: Client constructor start" << std::endl;
+        std::cout << "DEBUG: server_url = '" << server_url << "'" << std::endl;
+        
+        http_client = std::make_unique<httplib::Client>(server_url);
+        
+        std::cout << "DEBUG: http_client created successfully" << std::endl;
+        std::cout << "DEBUG: Client constructor end" << std::endl;
+    }
+
+    bool Login(const std::string& username, const std::string& password)
+    {
+        httplib::Params params;
+        params.emplace("username", username);
+        params.emplace("password", password);
+        
+        auto response = http_client->Post("/login", params);
+        
+        if (response && response->status == 200) 
+        {
+            current_user = username;
+            return true;
+        }
+        return false;
+    }
+
+    bool Register(const std::string& username, const std::string& password)
+    {
+        std::cout << "\n========== CLIENT DEBUG ==========" << std::endl;
+        std::cout << "Register function called" << std::endl;
+        std::cout << "Username: '" << username << "'" << std::endl;
+        std::cout << "Password: '" << password << "' (length: " << password.length() << ")" << std::endl;
+
+        std::string body = "username=" + username + "&password=" + password;
+        std::cout << "Request body: '" << body << "'" << std::endl;
+
+        httplib::Headers headers = 
+        {
+            {"Content-Type", "application/x-www-form-urlencoded"},
+            {"Content-Length", std::to_string(body.length())}
+        };
+
+        std::cout << "Sending POST request to: " << server_url << "/register" << std::endl;
+
+        auto response = http_client->Post("/register", headers, body, "application/x-www-form-urlencoded");
+
+        if (response) 
+        {
+            std::cout << "Response received!" << std::endl;
+            std::cout << "Status code: " << response->status << std::endl;
+            std::cout << "Response body: '" << response->body << "'" << std::endl;
+            return response->status == 200;
+        } 
+        else 
+        {
+            auto err = response.error();
+            std::cout << "CONNECTION ERROR: " << httplib::to_string(err) << std::endl;
+            return false;
+        }
     }
 
     void Run()
@@ -37,17 +94,14 @@ public:
         bool login_success = false;
         std::string login_status = "";
         
-        // Create input components
         auto username_input = Input(&username, "Username");
         auto password_input = Input(&password, "Password");
         
-        // Make password field
         password_input |= CatchEvent([&](Event event) 
         {
-            return false;  // Let FTXUI handle normally
+            return false;
         });
         
-        // Login button
         auto login_button = Button("Login", [&] 
         {
             if (Login(username, password)) 
@@ -58,10 +112,10 @@ public:
             else
             {
                 login_status = "Login failed";
+                screen.PostEvent(Event::Custom);
             }
         });
         
-        // Register button
         auto register_button = Button("Register", [&] 
         {
             if (Register(username, password)) 
@@ -72,9 +126,9 @@ public:
             {
                 login_status = "Registration failed";
             }
+            screen.PostEvent(Event::Custom);  // Force screen refresh
         });
         
-        // Login screen layout
         auto login_components = Container::Vertical(
         {
             username_input,
@@ -105,73 +159,24 @@ public:
         }
     }
 
-private:
-    bool Login(const std::string& username, const std::string& password)
-    {
-        httplib::Params params;
-        params.emplace("username", username);
-        params.emplace("password", password);
-        
-        auto response = http_client.Post("/login", params);
-        
-        if (response && response->status == 200) 
-        {
-            current_user = username;
-            return true;
-        }
-        return false;
-    }
-
-    bool Register(const std::string& username, const std::string& password)
-    {
-        std::cout << "\n========== CLIENT DEBUG ==========" << std::endl;
-        std::cout << "Register function called" << std::endl;
-        std::cout << "Username: '" << username << "'" << std::endl;
-        std::cout << "Password: '" << password << "' (length: " << password.length() << ")" << std::endl;
-
-        // Create form data
-        std::string body = "username=" + username + "&password=" + password;
-        std::cout << "Request body: '" << body << "'" << std::endl;
-
-        httplib::Headers headers = 
-        {
-            {"Content-Type", "application/x-www-form-urlencoded"},
-            {"Content-Length", std::to_string(body.length())}
-        };
-
-        std::cout << "Sending POST request to: " << server_url << "/register" << std::endl;
-
-        auto response = http_client.Post("/register", headers, body, "application/x-www-form-urlencoded");
-
-        if (response) 
-        {
-            std::cout << "Response received!" << std::endl;
-            std::cout << "Status code: " << response->status << std::endl;
-            std::cout << "Response body: '" << response->body << "'" << std::endl;
-            return response->status == 200;
-        } 
-        else 
-        {
-            auto err = response.error();
-            std::cout << "CONNECTION ERROR: " << httplib::to_string(err) << std::endl;
-            return false;
-        }
-    }
-
     void ShowMainMenu(ftxui::ScreenInteractive& screen)
     {
         using namespace ftxui;
-        
+
         int selected_tab = 0;
+        int previous_tab = 0;  // Track tab changes
         std::vector<std::string> tab_titles = {"Files", "Upload", "Storage"};
-        
-        // Tab menu
+
         auto tab_menu = Menu(&tab_titles, &selected_tab);
-        
-        // Files tab content
+
         auto files_tab = Renderer([&] 
         {
-            RefreshFileList();
+            // Refresh when this tab is rendered
+            if (selected_tab == 0) 
+            {
+                RefreshFileList();
+            }
+
             Elements file_elements;
             for (const auto& file : file_list) 
             {
@@ -189,8 +194,7 @@ private:
                 text(status_message) | color(Color::Blue)
             }) | border;
         });
-        
-        // Upload tab content
+
         auto upload_tab = Renderer([&] 
         {
             return vbox({
@@ -198,7 +202,7 @@ private:
                 separator(),
                 text("Use command line to upload files:"),
                 text(""),
-                text("  curl -X POST http://" + server_url + "/upload \\"),
+                text("  curl -X POST " + server_url + "/upload \\"),  // FIXED: removed extra http://
                 text("    -F \"username=" + current_user + "\" \\"),
                 text("    -F \"filename=yourfile.jpg\" \\"),
                 text("    -F \"file=@/path/to/yourfile.jpg\""),
@@ -206,8 +210,7 @@ private:
                 text("Or use the test script:")
             }) | border;
         });
-        
-        // Storage tab content
+
         auto storage_tab = Renderer([&] 
         {
             std::string storage_info = GetStorageInfo();
@@ -219,10 +222,8 @@ private:
                 text("Refresh to update")
             }) | border;
         });
-        
-        // Container for tabs
-        auto tab_container = Container::Tab
-        (
+
+        auto tab_container = Container::Tab(
             {
                 files_tab,
                 upload_tab,
@@ -230,16 +231,21 @@ private:
             },
             &selected_tab
         );
-        
-        // Main layout
-        auto main_layout = Container::Vertical
-        ({
+
+        auto main_layout = Container::Vertical({
             tab_menu,
             tab_container
         });
-        
+
         auto main_renderer = Renderer(main_layout, [&] 
         {
+            // Force refresh when switching to Files tab
+            if (selected_tab == 0 && previous_tab != selected_tab) 
+            {
+                RefreshFileList();
+            }
+            previous_tab = selected_tab;
+
             return vbox({
                 text("E2Eye - User: " + current_user) | bold | center,
                 separator(),
@@ -248,14 +254,14 @@ private:
                 tab_container->Render() | flex,
             }) | border;
         });
-        
+
         screen.Loop(main_renderer);
     }
 
     void RefreshFileList()
     {
         std::string url = "/files?username=" + current_user;
-        auto response = http_client.Get(url.c_str());
+        auto response = http_client->Get(url.c_str());
         
         file_list.clear();
         if (response && response->status == 200) 
@@ -282,7 +288,7 @@ private:
     std::string GetStorageInfo()
     {
         std::string url = "/storage?username=" + current_user;
-        auto response = http_client.Get(url.c_str());
+        auto response = http_client->Get(url.c_str());
         
         if (response && response->status == 200) 
         {
@@ -294,6 +300,15 @@ private:
 
 int main(int argc, char* argv[])
 {
+    // Set locale for FTXUI
+    try {
+        std::setlocale(LC_ALL, "en_US.UTF-8");
+        std::locale::global(std::locale("en_US.UTF-8"));
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Warning: Locale setup failed: " << e.what() << std::endl;
+    }
+    
     std::string server_address = "localhost";
     int port = 8080;
     

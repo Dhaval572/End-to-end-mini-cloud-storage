@@ -124,13 +124,38 @@ private:
 
     bool Register(const std::string& username, const std::string& password)
     {
-        httplib::Params params;
-        params.emplace("username", username);
-        params.emplace("password", password);
-        
-        auto response = http_client.Post("/register", params);
-        
-        return response && response->status == 200;
+        std::cout << "\n========== CLIENT DEBUG ==========" << std::endl;
+        std::cout << "Register function called" << std::endl;
+        std::cout << "Username: '" << username << "'" << std::endl;
+        std::cout << "Password: '" << password << "' (length: " << password.length() << ")" << std::endl;
+
+        // Create form data
+        std::string body = "username=" + username + "&password=" + password;
+        std::cout << "Request body: '" << body << "'" << std::endl;
+
+        httplib::Headers headers = 
+        {
+            {"Content-Type", "application/x-www-form-urlencoded"},
+            {"Content-Length", std::to_string(body.length())}
+        };
+
+        std::cout << "Sending POST request to: " << server_url << "/register" << std::endl;
+
+        auto response = http_client.Post("/register", headers, body, "application/x-www-form-urlencoded");
+
+        if (response) 
+        {
+            std::cout << "Response received!" << std::endl;
+            std::cout << "Status code: " << response->status << std::endl;
+            std::cout << "Response body: '" << response->body << "'" << std::endl;
+            return response->status == 200;
+        } 
+        else 
+        {
+            auto err = response.error();
+            std::cout << "CONNECTION ERROR: " << httplib::to_string(err) << std::endl;
+            return false;
+        }
     }
 
     void ShowMainMenu(ftxui::ScreenInteractive& screen)

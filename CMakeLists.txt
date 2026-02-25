@@ -4,18 +4,29 @@ project(E2Eye)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# -------------------------------------------------------------------
+# SPEED: Persistent download cache
+# -------------------------------------------------------------------
+if(NOT FETCHCONTENT_BASE_DIR)
+    set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/e2eye/fetchcontent" CACHE PATH "Directory to keep downloaded dependencies")
+endif()
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Disable network updates" FORCE)
+
 # Simple build flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -DNDEBUG")
+if(NOT MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe")
+endif()
 
 # Find packages
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
-find_package(OpenSSL REQUIRED)  # ADD THIS for ssl/crypto
+find_package(OpenSSL REQUIRED)
 
 # Find libsodium
 pkg_check_modules(LIBSODIUM REQUIRED libsodium)
 
-# Download httplib (FIX: Add this!)
+# Download httplib
 include(FetchContent)
 FetchContent_Declare(
     httplib
@@ -24,20 +35,40 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(httplib)
 
-# Download FTXUI
-include(FetchContent)
-FetchContent_Declare(
-    ftxui
-    GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
-    GIT_TAG v5.0.0
-)
-FetchContent_MakeAvailable(ftxui)
+# Find system FTXUI
+find_package(ftxui QUIET COMPONENTS component screen dom)
+if(ftxui_FOUND)
+    message(STATUS "Found system FTXUI in ${ftxui_DIR}")
+else()
+    message(STATUS "System FTXUI not found, downloading...")
+    include(FetchContent)
+    FetchContent_Declare(
+        ftxui
+        GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+        GIT_TAG v5.0.0
+    )
+    FetchContent_MakeAvailable(ftxui)
+endif()
 
 # Include directories
 include_directories(${LIBSODIUM_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(${httplib_SOURCE_DIR})  # ADD THIS for httplib
+include_directories(${httplib_SOURCE_DIR})  
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/common)
+
+# -------------------------------------------------------------------
+# PCH temporarily disabled due to spaces in path
+# -------------------------------------------------------------------
+# set(COMMON_PCH
+#     <httplib.h>
+#     <sodium.h>
+#     <string>
+#     <vector>
+#     <map>
+#     <fstream>
+#     <iostream>
+#     <filesystem>
+# )
 
 # Server executable
 add_executable(server 
@@ -49,10 +80,12 @@ add_executable(server
 target_link_libraries(server
     ${LIBSODIUM_LIBRARIES}
     Threads::Threads
-    OpenSSL::SSL      # FIX: Use OpenSSL::SSL instead of ssl
-    OpenSSL::Crypto   # FIX: Use OpenSSL::Crypto instead of crypto
+    OpenSSL::SSL
+    OpenSSL::Crypto
     httplib::httplib
 )
+
+# target_precompile_headers(server PRIVATE ${COMMON_PCH})
 
 # Client executable
 add_executable(client
@@ -67,7 +100,20 @@ target_link_libraries(client
     ftxui::dom
     ${LIBSODIUM_LIBRARIES}
     Threads::Threads
-    OpenSSL::SSL      # FIX: Use OpenSSL::SSL instead of ssl
-    OpenSSL::Crypto   # FIX: Use OpenSSL::Crypto instead of crypto
+    OpenSSL::SSL
+    OpenSSL::Crypto
     httplib::httplib
 )
+
+# target_precompile_headers(client PRIVATE
+#     ${COMMON_PCH}
+#     "ftxui/dom/elements.hpp"
+#     "ftxui/component/component.hpp"
+# )
+
+# Enable ccache
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+    message(STATUS "ccache enabled")
+endif()

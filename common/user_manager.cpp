@@ -1,11 +1,12 @@
 #include "user_manager.h"
 #include <fstream>
 #include <iostream>
+#include <sodium/core.h>
 #include <sstream>
 
 UserManager::UserManager() : m_storage_limit(100 * 1024 * 1024), m_data_file("users.txt")
 {
-    sodium_init();
+    (void)sodium_init();
     LoadUsers();
 }
 
@@ -46,13 +47,13 @@ void UserManager::SaveUsers()
     {
         file << username << "," 
              << user_data.password_hash << "," 
-             << user_data.storage_used << "\n";
+             << user_data.storage_used  << "\n";
     }
 }
 
 bool UserManager::RegisterUser(const std::string& username, const std::string& password)
 {
-    if (m_users.find(username) != m_users.end())
+    if (m_users.contains(username))
     {
         return false;
     }
@@ -111,8 +112,7 @@ size_t UserManager::GetStorageUsed(const std::string& username)
 
 void UserManager::UpdateStorageUsage(const std::string& username, size_t bytes_added)
 {
-    auto it = m_users.find(username);
-    if (it != m_users.end())
+    if (auto it = m_users.find(username); it != m_users.end())
     {
         it->second.storage_used += bytes_added;
         SaveUsers();

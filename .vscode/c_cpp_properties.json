@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/common",
+                "${workspaceFolder}/build/_deps/httplib-src",
+                "${workspaceFolder}/build/_deps/ftxui-src/include"
+            ],
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "cppStandard": "c++20"
+        }
+    ]
+}

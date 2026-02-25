@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <mutex>
 #include <httplib.h>
 #include "common/user_manager.h"
 #include "common/encryption.h"
@@ -17,6 +19,8 @@ private:
     Encryption m_encryption;
     std::string m_storage_path;
     static const int PORT = 8080;
+    static const int MAX_USERS = 5;
+    std::mutex m_user_mutex;
 
 public:
     Server() : m_storage_path("./storage")
@@ -32,6 +36,8 @@ public:
         std::cout << "======================================" << std::endl;
         std::cout << "Server listening on http://localhost:" << PORT << std::endl;
         std::cout << "Storage path: " << fs::absolute(m_storage_path) << std::endl;
+        std::cout << "Users file: " << fs::absolute("users.txt") << std::endl;
+        std::cout << "Max users allowed: " << MAX_USERS << std::endl;
         std::cout << "======================================" << std::endl;
         std::cout << "Press Ctrl+C to stop" << std::endl;
         std::cout << "======================================" << std::endl;
@@ -53,252 +59,246 @@ private:
             std::string message = 
                 "E2Eye Server is running!\n"
                 "Available endpoints:\n"
-                "  POST /register - Register new user\n"
+                "  POST /register - Register new user (max 5 users)\n"
                 "  POST /login - User login\n"
                 "  POST /upload - Upload file\n"
                 "  GET /files - List files\n"
                 "  GET /download - Download file\n"
-                "  GET /storage - Get storage info\n";
+                "  GET /storage - Get storage info\n"
+                "  GET /users - List all users\n";
             
             res.set_content(message, "text/plain");
         });
 
-        // Register endpoint
-        // Register endpoint - FIXED
-        // Register endpoint with EXTREME debugging
+        // Register endpoint with user limit
         m_server.Post("/register", [this](const httplib::Request& req, httplib::Response& res)
         {
-            std::cout << "\n========== SERVER DEBUG ==========" << std::endl;
-            std::cout << "=== REGISTER ENDPOINT HIT ===" << std::endl;
-            std::cout << "Request method: " << req.method << std::endl;
-            std::cout << "Request path: " << req.path << std::endl;
-            std::cout << "Request body: '" << req.body << "'" << std::endl;
-            std::cout << "Body length: " << req.body.length() << std::endl;
+            std::lock_guard<std::mutex> lock(m_user_mutex);
             
-            // Print all headers
-            std::cout << "Headers:" << std::endl;
-            for (const auto& header : req.headers) {
-                std::cout << "  " << header.first << ": " << header.second << std::endl;
-            }
-            
-            // Print all params
-            std::cout << "Params from get_param_value:" << std::endl;
-            for (const auto& param : req.params) {
-                std::cout << "  " << param.first << " = '" << param.second << "'" << std::endl;
-            }
+            std::cout << "\n=== REGISTER REQUEST ===" << std::endl;
             
             std::string username = req.get_param_value("username");
             std::string password = req.get_param_value("password");
             
-            std::cout << "Extracted username via get_param_value: '" << username << "'" << std::endl;
-            std::cout << "Extracted password via get_param_value: '" << password << "' (length: " << password.length() << ")" << std::endl;
-            
-            // If get_param_value failed, try manual parsing
-            if (username.empty() && !req.body.empty()) {
-                std::cout << "Attempting manual parse from body..." << std::endl;
-                
-                std::string body = req.body;
-                size_t pos = 0;
-                while (pos < body.length()) {
-                    size_t amp_pos = body.find('&', pos);
-                    std::string pair = body.substr(pos, amp_pos - pos);
-                    std::cout << "  Found pair: '" << pair << "'" << std::endl;
-                    
-                    size_t eq_pos = pair.find('=');
-                    if (eq_pos != std::string::npos) {
-                        std::string key = pair.substr(0, eq_pos);
-                        std::string value = pair.substr(eq_pos + 1);
-                        std::cout << "    Key: '" << key << "', Value: '" << value << "'" << std::endl;
-                        
-                        if (key == "username") username = value;
-                        if (key == "password") password = value;
-                    }
-                    
-                    if (amp_pos == std::string::npos) break;
-                    pos = amp_pos + 1;
+            if (username.empty() && !req.body.empty())
+            {
+                size_t u_pos = req.body.find("username=");
+                if (u_pos != std::string::npos)
+                {
+                    size_t u_end = req.body.find("&", u_pos);
+                    username = req.body.substr(u_pos + 9, u_end - (u_pos + 9));
                 }
                 
-                std::cout << "Manual parse result:" << std::endl;
-                std::cout << "  Username: '" << username << "'" << std::endl;
-                std::cout << "  Password: '" << password << "'" << std::endl;
+                size_t p_pos = req.body.find("password=");
+                if (p_pos != std::string::npos)
+                {
+                    size_t p_end = req.body.find("&", p_pos);
+                    password = req.body.substr(p_pos + 9, p_end - (p_pos + 9));
+                }
             }
+            
+            std::cout << "Username: '" << username << "'" << std::endl;
+            std::cout << "Password length: " << password.length() << std::endl;
             
             if (username.empty() || password.empty())
             {
-                std::cout << "ERROR: Username or password is empty!" << std::endl;
+                std::cout << "ERROR: Missing credentials" << std::endl;
                 res.status = 400;
                 res.set_content("Username and password required", "text/plain");
                 return;
             }
             
-            // Check if user already exists
-            std::cout << "Checking if user exists: " << username << std::endl;
-            if (m_user_manager.UserExists(username)) {
-                std::cout << "User already exists!" << std::endl;
-                res.status = 400;
+            // Check user limit
+            auto all_users = m_user_manager.GetAllUsers();
+            if (all_users.size() >= MAX_USERS)
+            {
+                std::cout << "ERROR: User limit reached (" << MAX_USERS << ")" << std::endl;
+                res.status = 403;
+                res.set_content("Server has reached maximum user limit (5)", "text/plain");
+                return;
+            }
+            
+            if (m_user_manager.UserExists(username))
+            {
+                std::cout << "ERROR: User already exists: " << username << std::endl;
+                res.status = 409;
                 res.set_content("Username already exists", "text/plain");
                 return;
             }
             
-            std::cout << "Calling UserManager::RegisterUser..." << std::endl;
-            bool register_result = m_user_manager.RegisterUser(username, password);
-            std::cout << "RegisterUser returned: " << (register_result ? "true" : "false") << std::endl;
-            
-            if (register_result) 
+            if (m_user_manager.RegisterUser(username, password))
             {
-                // Create user storage directory
-                try {
-                    std::string user_dir = m_storage_path + "/" + username;
-                    std::cout << "Creating directory: " << user_dir << std::endl;
-                    fs::create_directories(user_dir);
-                    std::cout << "Directory created successfully" << std::endl;
-                } catch (const std::exception& e) {
-                    std::cout << "Exception creating directory: " << e.what() << std::endl;
+                try
+                {
+                    fs::create_directories(m_storage_path + "/" + username);
+                    std::cout << "Created directory for: " << username << std::endl;
+                }
+                catch (const std::exception& e)
+                {
+                    std::cout << "Warning: " << e.what() << std::endl;
                 }
                 
-                std::cout << "Registration successful!" << std::endl;
+                std::cout << "SUCCESS: User registered: " << username << std::endl;
+                std::cout << "Total users now: " << (all_users.size() + 1) << "/" << MAX_USERS << std::endl;
+                res.status = 200;
                 res.set_content("Registration successful", "text/plain");
-            } 
-            else 
-            {
-                std::cout << "Registration failed!" << std::endl;
-                res.status = 400;
-                res.set_content("Registration failed", "text/plain");
             }
-            
-            std::cout << "========== END DEBUG ==========\n" << std::endl;
+            else
+            {
+                std::cout << "ERROR: Registration failed for: " << username << std::endl;
+                res.status = 500;
+                res.set_content("Registration failed - internal error", "text/plain");
+            }
         });
 
-        // Login endpoint - FIXED
+        // Login endpoint
         m_server.Post("/login", [this](const httplib::Request& req, httplib::Response& res)
         {
-            std::cout << "\n=== Login Request ===" << std::endl;
-            std::cout << "Body: '" << req.body << "'" << std::endl;
-
-            std::string username, password;
-
-            // Get from params (should work)
-            username = req.get_param_value("username");
-            password = req.get_param_value("password");
-
-            std::cout << "From params - Username: '" << username << "', Password length: " << password.length() << std::endl;
-
-            // If params empty, try manual parsing
-            if (username.empty() && !req.body.empty()) 
+            std::lock_guard<std::mutex> lock(m_user_mutex);
+            
+            std::cout << "\n=== LOGIN REQUEST ===" << std::endl;
+            
+            std::string username = req.get_param_value("username");
+            std::string password = req.get_param_value("password");
+            
+            if (username.empty() && !req.body.empty())
             {
-                std::cout << "Params empty, parsing body manually..." << std::endl;
-
-                std::string body = req.body;
-                size_t pos = 0;
-                while (pos < body.length()) 
+                size_t u_pos = req.body.find("username=");
+                if (u_pos != std::string::npos)
                 {
-                    size_t amp_pos = body.find('&', pos);
-                    std::string pair = body.substr(pos, amp_pos - pos);
-
-                    size_t eq_pos = pair.find('=');
-                    if (eq_pos != std::string::npos) 
-                    {
-                        std::string key = pair.substr(0, eq_pos);
-                        std::string value = pair.substr(eq_pos + 1);
-
-                        if (key == "username") username = value;
-                        if (key == "password") password = value;
-                    }
-
-                    if (amp_pos == std::string::npos) break;
-                    pos = amp_pos + 1;
+                    size_t u_end = req.body.find("&", u_pos);
+                    username = req.body.substr(u_pos + 9, u_end - (u_pos + 9));
                 }
-
-                std::cout << "Manual parse - Username: '" 
-                          << username 
-                          << "', Password: '" 
-                          << password 
-                          << "'" 
-                          << std::endl;
+                
+                size_t p_pos = req.body.find("password=");
+                if (p_pos != std::string::npos)
+                {
+                    size_t p_end = req.body.find("&", p_pos);
+                    password = req.body.substr(p_pos + 9, p_end - (p_pos + 9));
+                }
             }
-
+            
+            std::cout << "Username: '" << username << "'" << std::endl;
+            std::cout << "Password length: " << password.length() << std::endl;
+            
             if (username.empty() || password.empty())
             {
-                std::cout << "ERROR: Empty username or password" << std::endl;
+                std::cout << "ERROR: Missing credentials" << std::endl;
                 res.status = 400;
                 res.set_content("Username and password required", "text/plain");
                 return;
             }
-
-            std::cout << "Attempting login for: " << username << std::endl;
-
-            if (m_user_manager.AuthenticateUser(username, password)) 
+            
+            if (m_user_manager.AuthenticateUser(username, password))
             {
-                std::cout << "Login successful: " << username << std::endl;
+                std::cout << "SUCCESS: Login successful: " << username << std::endl;
+                res.status = 200;
                 res.set_content("Login successful", "text/plain");
-            } 
-            else 
+            }
+            else
             {
-                std::cout << "Login failed: Invalid credentials" << std::endl;
+                std::cout << "ERROR: Invalid credentials for: " << username << std::endl;
                 res.status = 401;
-                res.set_content("Invalid credentials", "text/plain");
+                res.set_content("Invalid username or password", "text/plain");
             }
         });
 
-        // Upload endpoint
+        // Upload endpoint - FIXED for client upload
         m_server.Post("/upload", [this](const httplib::Request& req, httplib::Response& res)
         {
             std::string username = req.get_param_value("username");
             std::string filename = req.get_param_value("filename");
             
+            std::cout << "\n=== UPLOAD REQUEST ===" << std::endl;
+            std::cout << "Username: " << username << std::endl;
+            std::cout << "Filename: " << filename << std::endl;
+            
             if (username.empty() || filename.empty())
             {
+                std::cout << "ERROR: Missing username or filename" << std::endl;
                 res.status = 400;
                 res.set_content("Username and filename required", "text/plain");
                 return;
             }
             
-            if (!m_user_manager.UserExists(username)) 
+            if (!m_user_manager.UserExists(username))
             {
+                std::cout << "ERROR: User not found: " << username << std::endl;
                 res.status = 401;
                 res.set_content("User not found", "text/plain");
                 return;
             }
 
+            // Get file from request - handle both multipart and form data
+            std::string file_content;
+            
+            // Check if it's multipart form data
             auto file_it = req.files.find("file");
-            if (file_it == req.files.end())
+            if (file_it != req.files.end())
             {
+                file_content = file_it->second.content;
+                std::cout << "Found multipart file, size: " << file_content.size() << " bytes" << std::endl;
+            }
+            else
+            {
+                // Try to get from body
+                file_content = req.body;
+                std::cout << "Using request body, size: " << file_content.size() << " bytes" << std::endl;
+            }
+            
+            if (file_content.empty())
+            {
+                std::cout << "ERROR: No file content" << std::endl;
                 res.status = 400;
-                res.set_content("No file provided", "text/plain");
+                res.set_content("No file content provided", "text/plain");
                 return;
             }
             
-            const auto& file = file_it->second;
-            std::string file_content = file.content;
             std::string file_path = m_storage_path + "/" + username + "/" + filename;
             
             size_t file_size = file_content.length();
-            if (m_user_manager.GetStorageUsed(username) + file_size > m_user_manager.GetStorageLimit()) 
+            size_t used = m_user_manager.GetStorageUsed(username);
+            size_t limit = m_user_manager.GetStorageLimit();
+            
+            if (used + file_size > limit)
             {
+                std::cout << "ERROR: Storage limit exceeded" << std::endl;
                 res.status = 400;
                 res.set_content("Storage limit exceeded", "text/plain");
                 return;
             }
 
-            // Encrypt and save
-            std::vector<unsigned char> data(file_content.begin(), file_content.end());
-            std::vector<unsigned char> encrypted_data = m_encryption.Encrypt(data, username);
-            
-            std::ofstream ofs(file_path, std::ios::binary);
-            if (ofs.is_open()) 
+            try
             {
-                ofs.write(reinterpret_cast<const char*>(encrypted_data.data()), encrypted_data.size());
+                std::vector<unsigned char> data(file_content.begin(), file_content.end());
+                std::vector<unsigned char> encrypted = m_encryption.Encrypt(data, username);
+                
+                std::ofstream ofs(file_path, std::ios::binary);
+                if (!ofs)
+                {
+                    std::cout << "ERROR: Cannot save file" << std::endl;
+                    res.status = 500;
+                    res.set_content("Failed to save file", "text/plain");
+                    return;
+                }
+                
+                ofs.write(reinterpret_cast<const char*>(encrypted.data()), encrypted.size());
                 ofs.close();
                 
                 m_user_manager.UpdateStorageUsage(username, file_size);
-                std::cout << "File uploaded: " << username << "/" << filename << std::endl;
+                
+                std::cout << "SUCCESS: File uploaded: " << username << "/" << filename 
+                         << " (" << file_size << " bytes)" << std::endl;
+                std::cout << "User storage: " << (used + file_size) << "/" << limit << " bytes" << std::endl;
+                
                 res.status = 200;
                 res.set_content("File uploaded successfully", "text/plain");
-            } 
-            else 
+            }
+            catch (const std::exception& e)
             {
+                std::cerr << "Upload error: " << e.what() << std::endl;
                 res.status = 500;
-                res.set_content("Failed to save file", "text/plain");
+                res.set_content("Upload failed: " + std::string(e.what()), "text/plain");
             }
         });
 
@@ -314,25 +314,40 @@ private:
                 return;
             }
             
-            if (!m_user_manager.UserExists(username)) 
+            if (!m_user_manager.UserExists(username))
             {
                 res.status = 401;
                 res.set_content("User not found", "text/plain");
                 return;
             }
 
-            std::string user_storage = m_storage_path + "/" + username;
+            std::string user_path = m_storage_path + "/" + username;
             std::string file_list;
             
-            if (fs::exists(user_storage))
+            if (fs::exists(user_path))
             {
-                for (const auto& entry : fs::directory_iterator(user_storage)) 
+                for (const auto& entry : fs::directory_iterator(user_path))
                 {
-                    if (entry.is_regular_file()) 
+                    if (entry.is_regular_file())
                     {
-                        file_list += entry.path().filename().string() + "\n";
+                        auto ftime = fs::last_write_time(entry);
+                        auto time_t = std::chrono::system_clock::to_time_t(
+                            std::chrono::clock_cast<std::chrono::system_clock>(ftime));
+                        
+                        char time_str[100];
+                        std::strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", 
+                                     std::localtime(&time_t));
+                        
+                        file_list += entry.path().filename().string() + " [" + 
+                                    std::to_string(fs::file_size(entry)) + " bytes] [" + 
+                                    time_str + "]\n";
                     }
                 }
+            }
+            
+            if (file_list.empty())
+            {
+                file_list = "No files found\n";
             }
             
             res.status = 200;
@@ -352,7 +367,7 @@ private:
                 return;
             }
             
-            if (!m_user_manager.UserExists(username)) 
+            if (!m_user_manager.UserExists(username))
             {
                 res.status = 401;
                 res.set_content("User not found", "text/plain");
@@ -360,30 +375,38 @@ private:
             }
 
             std::string file_path = m_storage_path + "/" + username + "/" + filename;
-            if (!fs::exists(file_path)) 
+            
+            if (!fs::exists(file_path))
             {
                 res.status = 404;
                 res.set_content("File not found", "text/plain");
                 return;
             }
 
-            std::ifstream ifs(file_path, std::ios::binary);
-            std::vector<unsigned char> encrypted_data
-            (
-                (std::istreambuf_iterator<char>(ifs)),
-                std::istreambuf_iterator<char>()
-            );
-            
-            std::vector<unsigned char> decrypted_data = m_encryption.Decrypt(encrypted_data, username);
-            
-            res.set_content
-            (
-                reinterpret_cast<const char*>(decrypted_data.data()), 
-                decrypted_data.size(), 
-                "application/octet-stream"
-            );
-            
-            std::cout << "File downloaded: " << username << "/" << filename << std::endl;
+            try
+            {
+                std::ifstream ifs(file_path, std::ios::binary);
+                std::vector<unsigned char> encrypted(
+                    (std::istreambuf_iterator<char>(ifs)),
+                    std::istreambuf_iterator<char>()
+                );
+                
+                std::vector<unsigned char> decrypted = m_encryption.Decrypt(encrypted, username);
+                
+                res.set_content(
+                    reinterpret_cast<const char*>(decrypted.data()), 
+                    decrypted.size(), 
+                    "application/octet-stream"
+                );
+                
+                std::cout << "File downloaded: " << username << "/" << filename << std::endl;
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << "Download error: " << e.what() << std::endl;
+                res.status = 500;
+                res.set_content("Download failed: " + std::string(e.what()), "text/plain");
+            }
         });
 
         // Storage info endpoint
@@ -398,7 +421,7 @@ private:
                 return;
             }
             
-            if (!m_user_manager.UserExists(username)) 
+            if (!m_user_manager.UserExists(username))
             {
                 res.status = 401;
                 res.set_content("User not found", "text/plain");
@@ -416,6 +439,23 @@ private:
             
             res.status = 200;
             res.set_content(info, "text/plain");
+        });
+
+        // Users list endpoint
+        m_server.Get("/users", [this](const httplib::Request&, httplib::Response& res)
+        {
+            auto users = m_user_manager.GetAllUsers();
+            std::string result = "Registered users (" + std::to_string(users.size()) + "/" + 
+                                std::to_string(MAX_USERS) + "):\n";
+            result += "========================\n";
+            
+            for (const auto& user : users)
+            {
+                size_t storage = m_user_manager.GetStorageUsed(user);
+                result += "  " + user + " (" + std::to_string(storage) + " bytes)\n";
+            }
+            
+            res.set_content(result, "text/plain");
         });
     }
 };

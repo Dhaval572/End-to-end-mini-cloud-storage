@@ -6,8 +6,8 @@
 #include <chrono>
 #include <mutex>
 #include <httplib.h>
-#include "common/user_manager.h"
-#include "common/encryption.h"
+#include "utility/user_manager.h"
+#include "utility/encryption.h"
 
 namespace fs = std::filesystem;
 

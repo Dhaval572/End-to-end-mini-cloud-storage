@@ -53,13 +53,13 @@ endif()
 include_directories(${LIBSODIUM_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${httplib_SOURCE_DIR})  
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/common)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/utility)
 
 # Server executable
 add_executable(server 
     server/main.cpp
-    common/user_manager.cpp
-    common/encryption.cpp
+    utility/user_manager.cpp
+    utility/encryption.cpp
 )
 
 target_link_libraries(server

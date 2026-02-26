@@ -715,7 +715,8 @@ public:
                 file_elements.push_back(text("   No files found"));
             }
 
-            return vbox({
+            return vbox
+            ({
                 text("Your Files - " + current_user) | bold | center,
                 separator(),
                 vbox(file_elements) | frame | size(HEIGHT, LESS_THAN, 15),
@@ -790,7 +791,8 @@ public:
         {
             if (!server_connected)
             {
-                return vbox({
+                return vbox
+                ({
                     text("Connection Lost") | bold | center | color(Color::Red),
                     separator(),
                     text("Server is not responding") | center,
@@ -803,7 +805,8 @@ public:
                 }) | border;
             }
 
-            return vbox({
+            return vbox
+            ({
                 text("Upload File") | bold | center,
                 separator(),
                 text("Current user: " + current_user) | color(Color::Blue),
@@ -846,7 +849,8 @@ public:
             screen.ExitLoopClosure()();
         });
 
-        auto storage_buttons = Container::Horizontal({
+        auto storage_buttons = Container::Horizontal
+        ({
             storage_refresh_btn,
             storage_back_btn,
             storage_logout_btn
@@ -856,7 +860,8 @@ public:
         {
             if (!server_connected)
             {
-                return vbox({
+                return vbox
+                ({
                     text("Connection Lost") | bold | center | color(Color::Red),
                     separator(),
                     text("Server is not responding") | center,
@@ -871,7 +876,8 @@ public:
 
             std::string storage_info = GetStorageInfo();
 
-            return vbox({
+            return vbox
+            ({
                 text("Storage Information") | bold | center,
                 separator(),
                 text(storage_info),
@@ -886,7 +892,8 @@ public:
             }) | border;
         });
 
-        auto tab_container = Container::Tab(
+        auto tab_container = Container::Tab
+        (
             {
                 files_tab,
                 upload_tab,
@@ -895,8 +902,8 @@ public:
             &selected_tab
         );
 
-        auto main_layout = Container::Vertical(
-        {
+        auto main_layout = Container::Vertical
+        ({
             tab_menu,
             tab_container
         });
@@ -915,7 +922,12 @@ public:
                 ping_display = std::to_string(ping) + "ms";
             }
 
-            if (selected_tab == 0 && previous_tab != selected_tab && server_connected)
+            if 
+            (
+                selected_tab == 0            && 
+                previous_tab != selected_tab && 
+                server_connected
+            )
             {
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_file_refresh).count();
@@ -930,8 +942,10 @@ public:
             }
             previous_tab = selected_tab;
 
-            return vbox({
-                hbox(
+            return vbox
+            ({
+                hbox
+                (
                     text("E2Eye - User: " + current_user) | bold,
                     filler(),
                     text(ping_display) | dim,

@@ -4,9 +4,13 @@
 #include <sodium/core.h>
 #include <sstream>
 
-UserManager::UserManager() : m_storage_limit(100 * 1024 * 1024), m_data_file("users.txt")
+UserManager::UserManager() 
+    : m_storage_limit(100 * 1024 * 1024), 
+      m_data_file("users.txt")
 {
-    if(sodium_init() < 0) std::cerr << "Failed to initialize libsodium" << std::endl;
+    if(sodium_init() < 0) 
+        std::cerr << "Failed to initialize libsodium" << std::endl;
+
     LoadUsers();
 }
 
@@ -28,9 +32,12 @@ void UserManager::LoadUsers()
         std::string password_hash;
         size_t storage_used;
 
-        if (std::getline(iss, username, ',')      &&
+        if 
+        (
+            std::getline(iss, username, ',')      &&
             std::getline(iss, password_hash, ',') &&
-            (iss >> storage_used))
+            (iss >> storage_used)
+        )
         {
             m_users[username] = {password_hash, storage_used};
         }

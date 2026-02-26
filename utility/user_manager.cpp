@@ -18,10 +18,7 @@ UserManager::~UserManager()
 void UserManager::LoadUsers()
 {
     std::ifstream file(m_data_file);
-    if (!file.is_open())
-    {
-        return;
-    }
+    if (!file.is_open()) return;
 
     std::string line;
     while (std::getline(file, line))
@@ -31,7 +28,7 @@ void UserManager::LoadUsers()
         std::string password_hash;
         size_t storage_used;
 
-        if (std::getline(iss, username, ',') &&
+        if (std::getline(iss, username, ',')      &&
             std::getline(iss, password_hash, ',') &&
             (iss >> storage_used))
         {
@@ -82,10 +79,7 @@ bool UserManager::RegisterUser(const std::string& username, const std::string& p
 bool UserManager::AuthenticateUser(const std::string& username, const std::string& password)
 {
     auto it = m_users.find(username);
-    if (it == m_users.end())
-    {
-        return false;
-    }
+    if (it == m_users.end()) return false;
 
     return crypto_pwhash_str_verify
     (
@@ -119,12 +113,15 @@ void UserManager::UpdateStorageUsage(const std::string& username, size_t bytes_a
     }
 }
 
-std::vector<std::string> UserManager::GetAllUsers()
+std::array<std::string, 5> UserManager::GetAllUsers()
 {
-    std::vector<std::string> users;
+    std::array<std::string, 5> users;
+    int index = 0;
+    
     for (const auto& [username, _] : m_users)
     {
-        users.push_back(username);
+        users[index] = username;
+        ++index;
     }
     return users;
 }

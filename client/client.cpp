@@ -80,7 +80,6 @@ private:
     std::atomic<bool> server_connected;
     std::chrono::steady_clock::time_point last_heartbeat;
     std::chrono::steady_clock::time_point last_file_refresh;
-    int selected_file_index;
     bool showing_main_menu;
     std::string selected_file_path;
     std::string upload_status;
@@ -100,11 +99,10 @@ public:
         , server_url(server_address)
         , status_message("Ready")
         , server_connected(false)
-        , selected_file_index(0)
-        , showing_main_menu(false)
-        , monitoring_active(false)
-        , current_screen(nullptr)
         , last_file_refresh(std::chrono::steady_clock::now())
+        , showing_main_menu(false)
+        , monitoring_active(false) 
+        , current_screen(nullptr)
     {
         if (server_address.find("http://") == 0 || server_address.find("https://") == 0)
         {
@@ -278,7 +276,8 @@ public:
             return false;
         }
 
-        httplib::MultipartFormDataItems items = {
+        httplib::MultipartFormDataItems items = 
+        {
             {"username", current_user, "", ""},
             {"filename", filename, "", ""},
             {"file", content, filename, "application/octet-stream"}
@@ -371,7 +370,8 @@ public:
 
                     if (!content.empty())
                     {
-                        httplib::MultipartFormDataItems items = {
+                        httplib::MultipartFormDataItems items = 
+                        {
                             {"username", current_user, "", ""},
                             {"filename", filename, "", ""},
                             {"file", content, filename, "application/octet-stream"}
@@ -466,7 +466,6 @@ public:
     void Run()
     {
         using namespace ftxui;
-
         auto screen = ScreenInteractive::TerminalOutput();
 
         StartMonitoring(&screen);
@@ -547,13 +546,14 @@ public:
                 http_client->set_keep_alive(true);
 
                 CheckConnection();
-                login_status = server_connected ? "Connected to server" : "Cannot connect to server";
+                login_status = server_connected ? "Connected to server" 
+                                                : "Cannot connect to server";
                 screen.PostEvent(Event::Custom);
             });
         });
 
-        auto login_components = Container::Vertical(
-        {
+        auto login_components = Container::Vertical
+        ({
             username_input,
             password_input,
             Container::Horizontal({login_button, register_button, quit_button}),
@@ -565,7 +565,8 @@ public:
             std::string conn_status = server_connected ? "● Connected" : "○ Disconnected";
             Color conn_color = server_connected ? Color::Green : Color::Red;
 
-            return vbox({
+            return vbox
+            ({
                 text("E2Eye Login") | bold | center,
                 separator(),
                 hbox(
@@ -666,7 +667,8 @@ public:
         {
             if (!server_connected)
             {
-                return vbox({
+                return vbox
+                ({
                     text("Connection Lost") | bold | center | color(Color::Red),
                     separator(),
                     text("Server is not responding") | center,
@@ -683,8 +685,10 @@ public:
 
             if (is_loading_files)
             {
-                file_elements.push_back(
-                    hbox(
+                file_elements.push_back
+                (
+                    hbox
+                    (
                         RenderSpinner(spinner_frame++),
                         text(" Loading files...") | color(Color::Yellow)
                     )
@@ -695,7 +699,10 @@ public:
             {
                 if ((int)i == selected_file)
                 {
-                    file_elements.push_back(text("-> " + display_list[i]) | bold | color(Color::Blue));
+                    file_elements.push_back
+                    (
+                        text("-> " + display_list[i]) | bold | color(Color::Blue)
+                    );
                 }
                 else
                 {
@@ -1073,882 +1080,3 @@ int main(int argc, char* argv[])
 
     return 0;
 }
-
-// #include <cstddef>
-// #include <memory>
-// #include <locale>
-// #include <clocale>
-// #include <iostream>
-// #include <string>
-// #include <vector>
-// #include <fstream>
-// #include <filesystem>
-// #include <chrono>
-// #include <thread>
-// #include <atomic>
-// #include <mutex>
-// #include <httplib.h>
-// #include "utility/tinyfiledialogs.h"
-// #include "ftxui/dom/elements.hpp"
-// #include "ftxui/component/component.hpp"
-// #include "ftxui/component/screen_interactive.hpp"
-
-// namespace fs = std::filesystem;
-
-// class Client
-// {
-// private:
-//     std::unique_ptr<httplib::Client> http_client;
-//     std::string current_user;
-//     std::string server_url;
-//     std::vector<std::string> file_list;
-//     std::string status_message;
-//     std::atomic<bool> server_connected;
-//     std::chrono::steady_clock::time_point last_heartbeat;
-//     int selected_file_index;
-//     bool showing_main_menu;
-    
-//     // File selection
-//     std::string selected_file_path;
-//     std::string upload_status;
-    
-//     // Thread for connection monitoring
-//     std::thread monitor_thread;
-//     std::atomic<bool> monitoring_active;
-//     std::mutex screen_mutex;
-//     ftxui::ScreenInteractive* current_screen;
-
-// public:
-//     Client(const std::string& server_address = "localhost", int port = 8080)
-//         : http_client(nullptr)
-//         , server_url(server_address)
-//         , status_message("Ready")
-//         , server_connected(false)
-//         , selected_file_index(0)
-//         , showing_main_menu(false)
-//         , monitoring_active(false)
-//         , current_screen(nullptr)
-//     {
-//         if (server_address.find("http://") == 0 || server_address.find("https://") == 0)
-//         {
-//             server_url = server_address;
-//         }
-//         else
-//         {
-//             server_url = "http://" + server_address + ":" + std::to_string(port);
-//         }
-
-//         http_client = std::make_unique<httplib::Client>(server_url.c_str());
-
-//         // Increase timeouts for better reliability
-//         http_client->set_connection_timeout(5);  // 5 seconds
-//         http_client->set_read_timeout(10);       // 10 seconds
-//         http_client->set_write_timeout(10);      // 10 seconds
-
-//         CheckConnection();
-//     }
-    
-//     ~Client()
-//     {
-//         StopMonitoring();
-//         // No NFD cleanup needed
-//     }
-
-//     void StartMonitoring(ftxui::ScreenInteractive* screen)
-//     {
-//         current_screen = screen;
-//         monitoring_active = true;
-//         monitor_thread = std::thread(&Client::MonitorConnection, this);
-//     }
-    
-//     void StopMonitoring()
-//     {
-//         monitoring_active = false;
-//         if (monitor_thread.joinable())
-//         {
-//             monitor_thread.join();
-//         }
-//     }
-    
-//     void MonitorConnection()
-//     {
-//         while (monitoring_active)
-//         {
-//             std::this_thread::sleep_for(std::chrono::seconds(1));
-            
-//             bool was_connected = server_connected;
-//             CheckConnection();
-            
-//             // If connection status changed
-//             if (was_connected != server_connected && current_screen)
-//             {
-//                 std::lock_guard<std::mutex> lock(screen_mutex);
-                
-//                 if (server_connected)
-//                 {
-//                     status_message = "Server connected";
-//                 }
-//                 else
-//                 {
-//                     status_message = "Server disconnected";
-                    
-//                     // If we're in main menu, clear user data
-//                     if (showing_main_menu)
-//                     {
-//                         current_user = "";
-//                         showing_main_menu = false;
-//                     }
-//                 }
-                
-//                 // Force screen refresh
-//                 current_screen->PostEvent(ftxui::Event::Custom);
-//             }
-//         }
-//     }
-
-//     void CheckConnection()
-//     {
-//         auto res = http_client->Get("/");
-//         server_connected = (res && res->status == 200);
-        
-//         if (server_connected)
-//         {
-//             last_heartbeat = std::chrono::steady_clock::now();
-//         }
-//     }
-
-//     bool IsServerConnected()
-//     {
-//         return server_connected;
-//     }
-
-//     bool Login(const std::string& username, const std::string& password)
-//     {
-//         if (!server_connected)
-//         {
-//             status_message = "Server disconnected";
-//             return false;
-//         }
-        
-//         httplib::Params params;
-//         params.emplace("username", username);
-//         params.emplace("password", password);
-        
-//         auto response = http_client->Post("/login", params);
-        
-//         if (response && response->status == 200)
-//         {
-//             current_user = username;
-//             status_message = "Login successful";
-//             last_heartbeat = std::chrono::steady_clock::now();
-//             return true;
-//         }
-        
-//         status_message = response ? "Login failed: " + response->body : "Server not responding";
-//         return false;
-//     }
-
-//     bool Register(const std::string& username, const std::string& password)
-//     {
-//         if (!server_connected)
-//         {
-//             status_message = "Server disconnected";
-//             return false;
-//         }
-        
-//         httplib::Params params;
-//         params.emplace("username", username);
-//         params.emplace("password", password);
-        
-//         auto response = http_client->Post("/register", params);
-        
-//         if (response && response->status == 200)
-//         {
-//             status_message = "Registration successful";
-//             last_heartbeat = std::chrono::steady_clock::now();
-//             return true;
-//         }
-        
-//         status_message = response ? "Registration failed: " + response->body : "Server not responding";
-//         return false;
-//     }
-
-//     bool UploadFile(const std::string& filepath)
-//     {
-//         if (!server_connected)
-//         {
-//             status_message = "Server disconnected";
-//             return false;
-//         }
-        
-//         fs::path path(filepath);
-        
-//         if (!fs::exists(path))
-//         {
-//             status_message = "File does not exist";
-//             return false;
-//         }
-        
-//         if (!fs::is_regular_file(path))
-//         {
-//             status_message = "Not a regular file";
-//             return false;
-//         }
-        
-//         std::ifstream file(path, std::ios::binary);
-        
-//         if (!file)
-//         {
-//             status_message = "Cannot open file";
-//             return false;
-//         }
-        
-//         std::string filename = path.filename().string();
-//         std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-//         file.close();
-        
-//         if (content.empty())
-//         {
-//             status_message = "File is empty";
-//             return false;
-//         }
-        
-//         httplib::MultipartFormDataItems items = {
-//             {"username", current_user, "", ""},
-//             {"filename", filename, "", ""},
-//             {"file", content, filename, "application/octet-stream"}
-//         };
-        
-//         auto response = http_client->Post("/upload", items);
-        
-//         if (response && response->status == 200)
-//         {
-//             status_message = "Upload successful: " + filename;
-//             last_heartbeat = std::chrono::steady_clock::now();
-//             RefreshFileList();
-//             return true;
-//         }
-        
-//         status_message = response ? "Upload failed: " + response->body : "Server not responding";
-//         return false;
-//     }
-
-//     bool DownloadFile(const std::string& filename)
-//     {
-//         if (!server_connected)
-//         {
-//             status_message = "Server disconnected";
-//             return false;
-//         }
-        
-//         std::string url = "/download?username=" + current_user + "&filename=" + filename;
-//         auto response = http_client->Get(url.c_str());
-        
-//         if (response && response->status == 200)
-//         {
-//             fs::path save_path = fs::current_path() / filename;
-//             std::ofstream file(save_path, std::ios::binary);
-            
-//             if (!file)
-//             {
-//                 status_message = "Cannot save file";
-//                 return false;
-//             }
-            
-//             file.write(response->body.c_str(), response->body.size());
-//             file.close();
-            
-//             status_message = "Downloaded: " + filename;
-//             last_heartbeat = std::chrono::steady_clock::now();
-//             return true;
-//         }
-        
-//         status_message = response ? "Download failed: " + response->body : "Server not responding";
-//         return false;
-//     }
-
-//     std::string OpenFileDialog()
-//     {
-//         const char* filters[] = { "*" };
-//         const char* result = tinyfd_openFileDialog
-//         (
-//             "Select File to Upload",  // Title
-//             "",                        // Default path (current directory)
-//             1,                         // Number of filter patterns
-//             filters,                   // Filter patterns
-//             "All Files",               // Single filter description
-//             0                          // Allow multiple selects (0 = no)
-//         );
-
-//         if (result != NULL)
-//         {
-//             std::cout << "Selected file: " << result << std::endl;
-//             return std::string(result);
-//         }
-
-//         std::cout << "No file selected" << std::endl; 
-//         return "";
-//     }
-
-//     void Run()
-//     {
-//         using namespace ftxui;
-        
-//         auto screen = ScreenInteractive::TerminalOutput();
-        
-//         // Start connection monitoring
-//         StartMonitoring(&screen);
-        
-//         std::string username, password;
-//         bool login_success = false;
-//         std::string login_status = "";
-        
-//         auto username_input = Input(&username, "Username");
-//         auto password_input = Input(&password, "Password");
-        
-//         auto login_button = Button("Login", [&]
-//         {
-//             if (!server_connected)
-//             {
-//                 login_status = "Server disconnected";
-//                 return;
-//             }
-            
-//             if (Login(username, password))
-//             {
-//                 showing_main_menu = true;
-//                 login_success = true;
-//                 screen.ExitLoopClosure()();
-//             }
-//             else
-//             {
-//                 login_status = status_message;
-//             }
-//         });
-        
-//         auto register_button = Button("Register", [&]
-//         {
-//             if (!server_connected)
-//             {
-//                 login_status = "Server disconnected";
-//                 return;
-//             }
-            
-//             if (Register(username, password))
-//             {
-//                 login_status = "Registration successful! Please login.";
-//             }
-//             else
-//             {
-//                 login_status = status_message;
-//             }
-//         });
-        
-//         auto quit_button = Button("Quit", [&]
-//         {
-//             StopMonitoring();
-//             screen.ExitLoopClosure()();
-//         });
-        
-//         auto login_components = Container::Vertical(
-//         {
-//             username_input,
-//             password_input,
-//             Container::Horizontal({login_button, register_button, quit_button})
-//         });
-        
-//         auto login_renderer = Renderer(login_components, [&]
-//         {
-//             std::string conn_status = server_connected ? "● Connected" : "○ Disconnected";
-//             Color conn_color = server_connected ? Color::Green : Color::Red;
-            
-//             return vbox({
-//                 text("E2Eye Login") | bold | center,
-//                 separator(),
-//                 hbox(
-//                     text("Server: " + server_url) | dim,
-//                     filler(),
-//                     text(conn_status) | color(conn_color) | bold
-//                 ),
-//                 separator(),
-//                 text("Username:"),
-//                 username_input->Render(),
-//                 text("Password:"),
-//                 password_input->Render(),
-//                 separator(),
-//                 hbox(login_button->Render(), register_button->Render(), quit_button->Render()),
-//                 text("") | size(HEIGHT, EQUAL, 1),
-//                 text(login_status) | color(Color::Yellow),
-//                 text("") | size(HEIGHT, EQUAL, 1),
-//                 text("Press Ctrl+C to quit") | dim
-//             }) | border;
-//         });
-        
-//         screen.Loop(login_renderer);
-        
-//         if (login_success)
-//         {
-//             ShowMainMenu(screen);
-//         }
-//         else
-//         {
-//             StopMonitoring();
-//         }
-//     }
-
-//     void ShowMainMenu(ftxui::ScreenInteractive& screen)
-//     {
-//         using namespace ftxui;
-
-//         int selected_tab = 0;
-//         int previous_tab = 0;
-//         int selected_file = 0;
-//         std::vector<std::string> tab_titles = {"Files", "Upload", "Storage"};
-
-//         auto tab_menu = Menu(&tab_titles, &selected_tab);
-
-//         // ============ FILES TAB COMPONENTS ============
-//         auto download_btn = Button("Download", [&]
-//         {
-//             if (!server_connected)
-//             {
-//                 status_message = "Server disconnected";
-//                 return;
-//             }
-
-//             if (file_list.empty() || selected_file >= (int)file_list.size())
-//             {
-//                 status_message = "No file selected";
-//                 return;
-//             }
-
-//             std::string filename = file_list[selected_file];
-//             size_t space = filename.find(' ');
-//             if (space != std::string::npos)
-//             {
-//                 filename = filename.substr(0, space);
-//             }
-
-//             if (DownloadFile(filename))
-//             {
-//                 status_message = "Downloaded: " + filename;
-//             }
-//             else
-//             {
-//                 status_message = "Download failed";
-//             }
-//         });
-
-//         auto refresh_btn = Button("Refresh", [&]
-//         {
-//             if (server_connected)
-//             {
-//                 RefreshFileList();
-//                 status_message = "List refreshed";
-//             }
-//             else
-//             {
-//                 status_message = "Server disconnected";
-//             }
-//         });
-
-//         auto files_logout_btn = Button("Logout", [&]
-//         {
-//             showing_main_menu = false;
-//             current_user = "";
-//             screen.ExitLoopClosure()();
-//         });
-
-//         auto files_buttons = Container::Horizontal({
-//             download_btn,
-//             refresh_btn,
-//             files_logout_btn
-//         });
-
-//         auto files_tab = Renderer(files_buttons, [&]
-//         {
-//             if (!server_connected)
-//             {
-//                 return vbox({
-//                     text("Connection Lost") | bold | center | color(Color::Red),
-//                     separator(),
-//                     text("Server is not responding") | center,
-//                     text("") | size(HEIGHT, EQUAL, 1),
-//                     hbox({
-//                         files_logout_btn->Render()
-//                     }) | center
-//                 }) | border;
-//             }
-
-//             if (selected_tab == 0)
-//             {
-//                 RefreshFileList();
-//             }
-
-//             Elements file_elements;
-//             for (size_t i = 0; i < file_list.size(); ++i)
-//             {
-//                 if ((int)i == selected_file)
-//                 {
-//                     file_elements.push_back(text("→ " + file_list[i]) | bold | color(Color::Blue));
-//                 }
-//                 else
-//                 {
-//                     file_elements.push_back(text("  " + file_list[i]));
-//                 }
-//             }
-//             if (file_elements.empty())
-//             {
-//                 file_elements.push_back(text("  No files found"));
-//             }
-
-//             return vbox({
-//                 text("Your Files - " + current_user) | bold | center,
-//                 separator(),
-//                 vbox(file_elements) | frame | size(HEIGHT, LESS_THAN, 15),
-//                 separator(),
-//                 hbox({
-//                     download_btn->Render(),
-//                     text("  "),
-//                     refresh_btn->Render(),
-//                     text("  "),
-//                     files_logout_btn->Render()
-//                 }),
-//                 text("") | size(HEIGHT, EQUAL, 1),
-//                 text(status_message) | color(Color::Blue)
-//             }) | border;
-//         });
-
-//         // ============ UPLOAD TAB COMPONENTS ============
-//         auto browse_btn = Button("Browse", [&]
-//         {
-//             const char* filters[] = { "*" };
-//             const char* result = tinyfd_openFileDialog(
-//                 "Select File to Upload",
-//                 "",
-//                 1,
-//                 filters,
-//                 NULL,
-//                 0
-//             );
-
-//             if (result)
-//             {
-//                 selected_file_path = std::string(result);
-//                 upload_status = "File selected: " + fs::path(result).filename().string();
-//             }
-//             else
-//             {
-//                 upload_status = "No file selected";
-//             }
-//         });
-
-//         auto upload_btn = Button("Upload", [&]
-//         {
-//             if (selected_file_path.empty())
-//             {
-//                 upload_status = "No file selected";
-//                 return;
-//             }
-
-//             if (!server_connected)
-//             {
-//                 upload_status = "Server disconnected";
-//                 return;
-//             }
-
-//             if (UploadFile(selected_file_path))
-//             {
-//                 upload_status = "Upload successful!";
-//                 selected_file_path = "";
-//             }
-//             else
-//             {
-//                 upload_status = "Upload failed";
-//             }
-//         });
-
-//         auto upload_back_btn = Button("Back", [&] { selected_tab = 0; });
-
-//         auto upload_logout_btn = Button("Logout", [&]
-//         {
-//             showing_main_menu = false;
-//             current_user = "";
-//             screen.ExitLoopClosure()();
-//         });
-
-//         auto upload_buttons = Container::Horizontal({
-//             browse_btn,
-//             upload_btn,
-//             upload_back_btn,
-//             upload_logout_btn
-//         });
-
-//         auto upload_tab = Renderer(upload_buttons, [&]
-//         {
-//             if (!server_connected)
-//             {
-//                 return vbox({
-//                     text("Connection Lost") | bold | center | color(Color::Red),
-//                     separator(),
-//                     text("Server is not responding") | center,
-//                     text("") | size(HEIGHT, EQUAL, 1),
-//                     hbox({
-//                         upload_back_btn->Render(),
-//                         text("  "),
-//                         upload_logout_btn->Render()
-//                     }) | center
-//                 }) | border;
-//             }
-
-//             return vbox({
-//                 text("Upload File") | bold | center,
-//                 separator(),
-//                 text("Current user: " + current_user) | color(Color::Blue),
-//                 separator(),
-//                 text("Selected file:"),
-//                 text("  " + (selected_file_path.empty() ? "(none)" : selected_file_path)) | 
-//                     color(selected_file_path.empty() ? Color::GrayDark : Color::Green),
-//                 separator(),
-//                 hbox({
-//                     browse_btn->Render(),
-//                     text("  "),
-//                     upload_btn->Render(),
-//                     text("  "),
-//                     upload_back_btn->Render(),
-//                     text("  "),
-//                     upload_logout_btn->Render()
-//                 }),
-//                 text("") | size(HEIGHT, EQUAL, 1),
-//                 text(upload_status) | color(upload_status.find("success") != std::string::npos ? Color::Green : Color::Red)
-//             }) | border;
-//         });
-
-//         // ============ STORAGE TAB COMPONENTS ============
-//         auto storage_refresh_btn = Button("Refresh", [&]
-//         {
-//             // Force refresh by updating status
-//             status_message = "Storage info refreshed";
-//         });
-
-//         auto storage_back_btn = Button("Back", [&] { selected_tab = 0; });
-
-//         auto storage_logout_btn = Button("Logout", [&]
-//         {
-//             showing_main_menu = false;
-//             current_user = "";
-//             screen.ExitLoopClosure()();
-//         });
-
-//         auto storage_buttons = Container::Horizontal({
-//             storage_refresh_btn,
-//             storage_back_btn,
-//             storage_logout_btn
-//         });
-
-//         auto storage_tab = Renderer(storage_buttons, [&]
-//         {
-//             if (!server_connected)
-//             {
-//                 return vbox({
-//                     text("Connection Lost") | bold | center | color(Color::Red),
-//                     separator(),
-//                     text("Server is not responding") | center,
-//                     text("") | size(HEIGHT, EQUAL, 1),
-//                     hbox({
-//                         storage_back_btn->Render(),
-//                         text("  "),
-//                         storage_logout_btn->Render()
-//                     }) | center
-//                 }) | border;
-//             }
-
-//             std::string storage_info = GetStorageInfo();
-
-//             return vbox({
-//                 text("Storage Information") | bold | center,
-//                 separator(),
-//                 text(storage_info),
-//                 text(""),
-//                 hbox({
-//                     storage_refresh_btn->Render(),
-//                     text("  "),
-//                     storage_back_btn->Render(),
-//                     text("  "),
-//                     storage_logout_btn->Render()
-//                 })
-//             }) | border;
-//         });
-
-//         // ============ TAB CONTAINER ============
-//         auto tab_container = Container::Tab(
-//             {
-//                 files_tab,
-//                 upload_tab,
-//                 storage_tab
-//             },
-//             &selected_tab
-//         );
-
-//         auto main_layout = Container::Vertical(
-//         {
-//             tab_menu,
-//             tab_container
-//         });
-
-//         auto main_renderer = Renderer(main_layout, [&]
-//         {
-//             std::string conn_status = server_connected ? "● Connected" : "○ Disconnected";
-//             Color conn_color = server_connected ? Color::Green : Color::Red;
-
-//             if (selected_tab == 0 && previous_tab != selected_tab)
-//             {
-//                 RefreshFileList();
-//             }
-//             previous_tab = selected_tab;
-
-//             return vbox({
-//                 hbox(
-//                     text("E2Eye - User: " + current_user) | bold,
-//                     filler(),
-//                     text(conn_status) | color(conn_color) | bold
-//                 ) | center,
-//                 separator(),
-//                 tab_menu->Render() | hcenter,
-//                 separator(),
-//                 tab_container->Render() | flex,
-//             }) | border;
-//         });
-
-//         auto main_component = main_layout | CatchEvent([&](Event event)
-//         {
-//             if (event == Event::Character('q') || event == Event::Character('Q') || event == Event::Escape)
-//             {
-//                 showing_main_menu = false;
-//                 current_user = "";
-//                 screen.ExitLoopClosure()();
-//                 return true;
-//             }
-
-//             // File selection with arrow keys in Files tab
-//             if (selected_tab == 0 && server_connected)
-//             {
-//                 if (event == Event::ArrowUp && selected_file > 0)
-//                 {
-//                     selected_file--;
-//                     return true;
-//                 }
-//                 if (event == Event::ArrowDown && selected_file < (int)file_list.size() - 1)
-//                 {
-//                     selected_file++;
-//                     return true;
-//                 }
-//             }
-
-//             return false;
-//         });
-
-//         screen.Loop(main_component);
-
-//         // After exiting main menu, go back to login
-//         if (showing_main_menu == false)
-//         {
-//             StopMonitoring();
-//             Run();
-//         }
-//     }
-
-//     void RefreshFileList()
-//     {
-//         if (!server_connected)
-//         {
-//             return;
-//         }
-        
-//         std::string url = "/files?username=" + current_user;
-//         auto response = http_client->Get(url.c_str());
-        
-//         file_list.clear();
-        
-//         if (response && response->status == 200)
-//         {
-//             std::string content = response->body;
-//             size_t pos = 0;
-            
-//             while ((pos = content.find('\n')) != std::string::npos)
-//             {
-//                 std::string file = content.substr(0, pos);
-                
-//                 if (!file.empty() && file != "No files found")
-//                 {
-//                     file_list.push_back(file);
-//                 }
-                
-//                 content.erase(0, pos + 1);
-//             }
-            
-//             last_heartbeat = std::chrono::steady_clock::now();
-//         }
-//     }
-
-//     std::string GetStorageInfo()
-//     {
-//         if (!server_connected)
-//         {
-//             return "Cannot connect to server";
-//         }
-        
-//         std::string url = "/storage?username=" + current_user;
-//         auto response = http_client->Get(url.c_str());
-        
-//         if (response && response->status == 200)
-//         {
-//             last_heartbeat = std::chrono::steady_clock::now();
-//             return response->body;
-//         }
-        
-//         return "Unable to retrieve storage info";
-//     }
-// };
-
-// int main(int argc, char* argv[])
-// {
-//     try
-//     {
-//         std::setlocale(LC_ALL, "en_US.UTF-8");
-//         std::locale::global(std::locale("en_US.UTF-8"));
-//     }
-//     catch (const std::exception& e)
-//     {
-//         std::cerr << "Warning: Locale setup failed: " << e.what() << std::endl;
-//     }
-    
-//     std::string server_address = "localhost";
-//     int port = 8080;
-    
-//     if (argc > 1)
-//     {
-//         server_address = argv[1];
-//     }
-    
-//     if (argc > 2)
-//     {
-//         port = std::stoi(argv[2]);
-//     }
-    
-//     try
-//     {
-//         while (true)
-//         {
-//             Client client(server_address, port);
-//             client.Run();
-//         }
-//     }
-//     catch (const std::exception& e)
-//     {
-//         std::cerr << "Error: " << e.what() << std::endl;
-//         return 1;
-//     }
-    
-//     return 0;
-// }

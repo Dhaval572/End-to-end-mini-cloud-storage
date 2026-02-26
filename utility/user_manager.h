@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <map>
-#include <vector>
+#include <array>
 #include <sodium.h>
 
 class UserManager
@@ -30,5 +30,5 @@ public:
     size_t GetStorageUsed(const std::string& username);
     size_t GetStorageLimit() const { return m_storage_limit; }
     void UpdateStorageUsage(const std::string& username, size_t bytes_added);
-    std::vector<std::string> GetAllUsers();
+    std::array<std::string, 5> GetAllUsers();
 };
